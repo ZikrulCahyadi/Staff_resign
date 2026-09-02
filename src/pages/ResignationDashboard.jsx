@@ -11,7 +11,6 @@ import AIInsight from '../components/AIInsight';
 
 import { getEmployeesData } from '../services/resignationService';
 import {
-  getYearData,
   getResignationSummary,
   getVoluntarySummary,
   getInvoluntarySummary,
@@ -32,6 +31,10 @@ export default function ResignationDashboard() {
   const [region, setRegion] = useState('All Region');
   const [regions, setRegions] = useState([]);
 
+  // Year Selection State
+  const [availableYears, setAvailableYears] = useState([]);
+  const [selectedYears, setSelectedYears] = useState([]);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -41,6 +44,16 @@ export default function ResignationDashboard() {
         
         const uniqueRegions = [...new Set(employees.map(e => e.region).filter(Boolean))].sort();
         setRegions(uniqueRegions);
+
+        const uniqueYears = [...new Set(employees.map(e => {
+          if (!e.resign_date) return null;
+          return new Date(e.resign_date).getFullYear();
+        }).filter(y => y !== null && !isNaN(y)))].sort();
+        
+        setAvailableYears(uniqueYears);
+        if (uniqueYears.length > 0) {
+          setSelectedYears([...uniqueYears]);
+        }
         
         setError(null);
       } catch (err) {
@@ -55,43 +68,46 @@ export default function ResignationDashboard() {
   }, []);
 
   const filteredData = useMemo(() => {
-    if (region === 'All Region') return data;
-    return data.filter(item => item.region === region);
+    let result = data;
+    if (region !== 'All Region') {
+      result = result.filter(item => item.region === region);
+    }
+    return result;
   }, [data, region]);
 
-  // Aggregate Data
-  const data2025 = useMemo(() => getYearData(filteredData, 2025), [filteredData]);
-  const data2026 = useMemo(() => getYearData(filteredData, 2026), [filteredData]);
+  // Aggregate Data Dynamically
+  const yearlyStats = useMemo(() => {
+    const stats = {};
+    selectedYears.forEach(year => {
+      stats[year] = {
+        total: getResignationSummary(filteredData, year).total,
+        vt: getVoluntarySummary(filteredData, year).count,
+        it: getInvoluntarySummary(filteredData, year).count,
+        alumni: getAlumniSummary(filteredData, year).count,
+        nonAlumni: getNonAlumniSummary(filteredData, year).count,
+      };
+    });
+    return stats;
+  }, [filteredData, selectedYears]);
 
-  // KPIs
-  const summary2025 = useMemo(() => getResignationSummary(filteredData, 2025), [filteredData]);
-  const summary2026 = useMemo(() => getResignationSummary(filteredData, 2026), [filteredData]);
-  const totalResignCombined = summary2025.total + summary2026.total;
-  
-  const vt2025 = useMemo(() => getVoluntarySummary(filteredData, 2025), [filteredData]);
-  const vt2026 = useMemo(() => getVoluntarySummary(filteredData, 2026), [filteredData]);
-  const vtCombined = vt2025.count + vt2026.count;
-  
-  const it2025 = useMemo(() => getInvoluntarySummary(filteredData, 2025), [filteredData]);
-  const it2026 = useMemo(() => getInvoluntarySummary(filteredData, 2026), [filteredData]);
-  const itCombined = it2025.count + it2026.count;
+  const combinedStats = useMemo(() => {
+    return selectedYears.reduce((acc, curr) => {
+      const yearStat = yearlyStats[curr];
+      return {
+        total: acc.total + yearStat.total,
+        vt: acc.vt + yearStat.vt,
+        it: acc.it + yearStat.it,
+        alumni: acc.alumni + yearStat.alumni,
+        nonAlumni: acc.nonAlumni + yearStat.nonAlumni
+      };
+    }, { total: 0, vt: 0, it: 0, alumni: 0, nonAlumni: 0 });
+  }, [yearlyStats, selectedYears]);
 
-  const alumni2025 = useMemo(() => getAlumniSummary(filteredData, 2025), [filteredData]);
-  const alumni2026 = useMemo(() => getAlumniSummary(filteredData, 2026), [filteredData]);
-  const alumniCombined = alumni2025.count + alumni2026.count;
+  // Charts & Tables Data
+  const clusterData = useMemo(() => getClusterAnalysis(filteredData, selectedYears), [filteredData, selectedYears]);
+  const positionData = useMemo(() => getPositionAnalysis(filteredData, selectedYears), [filteredData, selectedYears]);
   
-  const nonAlumni2025 = useMemo(() => getNonAlumniSummary(filteredData, 2025), [filteredData]);
-  const nonAlumni2026 = useMemo(() => getNonAlumniSummary(filteredData, 2026), [filteredData]);
-  const nonAlumniCombined = nonAlumni2025.count + nonAlumni2026.count;
-
-  // Charts & Tables
-  const clusterData = useMemo(() => getClusterAnalysis(data2025, data2026), [data2025, data2026]);
-  const positionData = useMemo(() => getPositionAnalysis(data2025, data2026), [data2025, data2026]);
-  
-  const topEstates2025 = useMemo(() => getTopEstates(filteredData, 2025), [filteredData]);
-  const topEstates2026 = useMemo(() => getTopEstates(filteredData, 2026), [filteredData]);
-
-  const trendData = useMemo(() => getMonthlyTrend(filteredData), [filteredData]);
+  const trendData = useMemo(() => getMonthlyTrend(filteredData, selectedYears), [filteredData, selectedYears]);
   
   const trendLines = useMemo(() => {
     return {
@@ -102,6 +118,7 @@ export default function ResignationDashboard() {
 
   const handleReset = () => {
     setRegion('All Region');
+    setSelectedYears([...availableYears]);
   };
 
   if (loading) {
@@ -136,28 +153,32 @@ export default function ResignationDashboard() {
         region={region} 
         setRegion={setRegion} 
         regions={regions} 
-        onReset={handleReset} 
+        onReset={handleReset}
+        selectedYears={selectedYears}
+        setSelectedYears={setSelectedYears}
+        availableYears={availableYears}
       />
 
-      {filteredData.length === 0 ? (
+      {filteredData.length === 0 || selectedYears.length === 0 ? (
         <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-sm">
           <Filter className="w-8 h-8 text-slate-400 mx-auto mb-4" />
           <h3 className="text-lg font-bold text-slate-800 mb-2">Tidak Ada Data</h3>
-          <p className="text-slate-500">Tidak ada data resignation untuk filter region yang dipilih.</p>
+          <p className="text-slate-500">Tidak ada data resignation untuk filter yang dipilih.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-4">
           
           {/* KPI Row */}
-          <div className="flex flex-wrap lg:flex-nowrap gap-2 items-center">
+          <div className="flex flex-wrap lg:flex-nowrap gap-2 items-center overflow-x-auto pb-2">
             <div className="flex-1 min-w-[200px]">
               <KpiCard 
                 title="Total Resign" 
-                totalValue={totalResignCombined}
-                val2025={summary2025.total} 
-                perc2025={calculatePercentage(summary2025.total, totalResignCombined)}
-                val2026={summary2026.total}
-                perc2026={calculatePercentage(summary2026.total, totalResignCombined)}
+                totalValue={combinedStats.total}
+                breakdowns={selectedYears.map(year => ({
+                  year,
+                  value: yearlyStats[year].total,
+                  percentage: calculatePercentage(yearlyStats[year].total, combinedStats.total)
+                }))}
                 color="slate"
               />
             </div>
@@ -167,24 +188,26 @@ export default function ResignationDashboard() {
             <div className="flex-1 min-w-[200px]">
               <KpiCard 
                 title="Voluntary (VT)" 
-                totalValue={vtCombined}
-                totalPercentage={calculatePercentage(vtCombined, totalResignCombined)}
-                val2025={vt2025.count} 
-                perc2025={calculatePercentage(vt2025.count, summary2025.total)}
-                val2026={vt2026.count}
-                perc2026={calculatePercentage(vt2026.count, summary2026.total)}
+                totalValue={combinedStats.vt}
+                totalPercentage={calculatePercentage(combinedStats.vt, combinedStats.total)}
+                breakdowns={selectedYears.map(year => ({
+                  year,
+                  value: yearlyStats[year].vt,
+                  percentage: calculatePercentage(yearlyStats[year].vt, yearlyStats[year].total)
+                }))}
                 color="blue"
               />
             </div>
             <div className="flex-1 min-w-[200px]">
               <KpiCard 
                 title="Involuntary (IT)" 
-                totalValue={itCombined}
-                totalPercentage={calculatePercentage(itCombined, totalResignCombined)}
-                val2025={it2025.count} 
-                perc2025={calculatePercentage(it2025.count, summary2025.total)}
-                val2026={it2026.count}
-                perc2026={calculatePercentage(it2026.count, summary2026.total)}
+                totalValue={combinedStats.it}
+                totalPercentage={calculatePercentage(combinedStats.it, combinedStats.total)}
+                breakdowns={selectedYears.map(year => ({
+                  year,
+                  value: yearlyStats[year].it,
+                  percentage: calculatePercentage(yearlyStats[year].it, yearlyStats[year].total)
+                }))}
                 color="rose"
               />
             </div>
@@ -192,24 +215,26 @@ export default function ResignationDashboard() {
             <div className="flex-1 min-w-[200px]">
               <KpiCard 
                 title="Alumni FRLC" 
-                totalValue={alumniCombined}
-                totalPercentage={calculatePercentage(alumniCombined, totalResignCombined)}
-                val2025={alumni2025.count} 
-                perc2025={calculatePercentage(alumni2025.count, summary2025.total)}
-                val2026={alumni2026.count}
-                perc2026={calculatePercentage(alumni2026.count, summary2026.total)}
+                totalValue={combinedStats.alumni}
+                totalPercentage={calculatePercentage(combinedStats.alumni, combinedStats.total)}
+                breakdowns={selectedYears.map(year => ({
+                  year,
+                  value: yearlyStats[year].alumni,
+                  percentage: calculatePercentage(yearlyStats[year].alumni, yearlyStats[year].total)
+                }))}
                 color="emerald"
               />
             </div>
             <div className="flex-1 min-w-[200px]">
               <KpiCard 
                 title="Non Alumni" 
-                totalValue={nonAlumniCombined}
-                totalPercentage={calculatePercentage(nonAlumniCombined, totalResignCombined)}
-                val2025={nonAlumni2025.count} 
-                perc2025={calculatePercentage(nonAlumni2025.count, summary2025.total)}
-                val2026={nonAlumni2026.count}
-                perc2026={calculatePercentage(nonAlumni2026.count, summary2026.total)}
+                totalValue={combinedStats.nonAlumni}
+                totalPercentage={calculatePercentage(combinedStats.nonAlumni, combinedStats.total)}
+                breakdowns={selectedYears.map(year => ({
+                  year,
+                  value: yearlyStats[year].nonAlumni,
+                  percentage: calculatePercentage(yearlyStats[year].nonAlumni, yearlyStats[year].total)
+                }))}
                 color="amber"
               />
             </div>
@@ -218,41 +243,38 @@ export default function ResignationDashboard() {
           {/* Charts Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div>
-              <ClusterChart data={clusterData} />
+              <ClusterChart data={clusterData} selectedYears={selectedYears} />
             </div>
             <div>
-              <PositionChart data={positionData} />
+              <PositionChart data={positionData} selectedYears={selectedYears} />
             </div>
           </div>
 
           {/* Tables Row for Top Estates */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <EstateTable 
-              title="Sebaran Top Ten Per Kebun – Th. 2025" 
-              data={topEstates2025}
-              globalTotals={{
-                it: it2025.count,
-                vt: vt2025.count,
-                total: summary2025.total
-              }}
-            />
-            <EstateTable 
-              title="Sebaran Top Ten Per Kebun – Th. 2026" 
-              data={topEstates2026}
-              globalTotals={{
-                it: it2026.count,
-                vt: vt2026.count,
-                total: summary2026.total
-              }}
-            />
+          <div className={`grid grid-cols-1 lg:grid-cols-${selectedYears.length > 2 ? '3' : '2'} gap-4`}>
+            {selectedYears.map(year => {
+              const topEstates = getTopEstates(filteredData, year);
+              return (
+                <EstateTable 
+                  key={year}
+                  title={`Sebaran Top Ten Per Kebun – Th. ${year}`} 
+                  data={topEstates}
+                  globalTotals={{
+                    it: yearlyStats[year].it,
+                    vt: yearlyStats[year].vt,
+                    total: yearlyStats[year].total
+                  }}
+                />
+              );
+            })}
           </div>
 
           {/* Cluster Analysis Table */}
           <div>
             <ClusterAnalysisTable 
               data={clusterData}
-              total2025={summary2025.total}
-              total2026={summary2026.total}
+              selectedYears={selectedYears}
+              yearlyStats={yearlyStats}
             />
           </div>
 

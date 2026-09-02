@@ -364,7 +364,12 @@ export default function DataManagement() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Region</label>
-                  <input type="text" name="region" value={formData.region} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm" />
+                  <select name="region" value={formData.region} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm">
+                    <option value="">Pilih Region...</option>
+                    {regionOptions.map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Jenis Resign</label>
@@ -386,11 +391,11 @@ export default function DataManagement() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Tanggal Bergabung</label>
-                  <input type="date" name="join_date" value={formData.join_date} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm" />
+                  <input type="date" name="join_date" value={formData.join_date} onChange={handleInputChange} onClick={(e) => e.target.showPicker && e.target.showPicker()} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm cursor-pointer" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Tanggal Resign</label>
-                  <input type="date" name="resign_date" value={formData.resign_date} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm" />
+                  <input type="date" name="resign_date" value={formData.resign_date} onChange={handleInputChange} onClick={(e) => e.target.showPicker && e.target.showPicker()} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm cursor-pointer" />
                 </div>
                 <div className="space-y-1 md:col-span-2">
                   <label className="text-xs font-semibold text-slate-600">Deskripsi Resign</label>

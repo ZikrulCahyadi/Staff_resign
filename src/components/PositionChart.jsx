@@ -1,21 +1,26 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
 
+const YEAR_COLORS = ['#1e40af', '#f97316', '#10b981', '#8b5cf6', '#ef4444', '#06b6d4'];
+
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
       <div className="bg-white p-3 border border-slate-200 shadow-md rounded-lg">
         <p className="font-bold text-slate-800 text-sm mb-2">{label}</p>
-        {payload.map((entry, index) => (
-          <div key={`item-${index}`} className="flex items-center gap-2 text-xs mb-1">
-            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }}></div>
-            <span className="text-slate-600 font-medium">{entry.name}:</span>
-            <span className="font-bold text-slate-900">{entry.value}</span>
-            <span className="text-slate-500">
-              ({entry.payload[`perc${entry.dataKey.replace('count', '')}`]}%)
-            </span>
-          </div>
-        ))}
+        {payload.map((entry, index) => {
+          const year = entry.dataKey.replace('count', '');
+          return (
+            <div key={`item-${index}`} className="flex items-center gap-2 text-xs mb-1">
+              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }}></div>
+              <span className="text-slate-600 font-medium">Tahun {year}:</span>
+              <span className="font-bold text-slate-900">{entry.value}</span>
+              <span className="text-slate-500">
+                ({entry.payload[`perc${year}`]}%)
+              </span>
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -23,12 +28,12 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 const CustomLabel = (props) => {
-  const { x, y, width, height, value, dataKey, payload } = props;
-  const is2025 = dataKey === 'count2025';
-  const perc = is2025 ? payload?.perc2025 : payload?.perc2026;
-  const color = '#ffffff';
+  const { x, y, width, height, value, payload, year } = props;
   
-  if (value === 0 || height < 20 || !payload) return null; // Don't show label if segment is too small
+  if (value === 0 || height < 20 || !payload || !year) return null; // Don't show label if segment is too small
+
+  const perc = payload[`perc${year}`];
+  const color = '#ffffff';
 
   return (
     <text 
@@ -63,16 +68,15 @@ const CustomXAxisTick = ({ x, y, payload }) => {
   );
 };
 
-export default function PositionChart({ data }) {
-  // Use top 6 for vertical chart readability, reversed so largest is on the right or just leave as is
-  // Actually, sort ascending so the largest is on the right side of the x-axis
-  const chartData = [...data].slice(0, 6).sort((a, b) => (a.count2025 + a.count2026) - (b.count2025 + b.count2026));
+export default function PositionChart({ data, selectedYears = [] }) {
+  // Use top 6 for vertical chart readability, sort ascending so the largest is on the right side of the x-axis
+  const chartData = [...data].slice(0, 6).sort((a, b) => a.totalCount - b.totalCount);
 
   return (
     <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 h-full flex flex-col hover:shadow-md transition-shadow duration-300">
       <div className="mb-4">
         <h3 className="text-base font-bold text-slate-800 tracking-tight">Cluster Resign by Jabatan</h3>
-        <p className="text-xs text-slate-500 font-medium mt-0.5">Top jabatan 2025 vs 2026</p>
+        <p className="text-xs text-slate-500 font-medium mt-0.5">Top jabatan {selectedYears.join(' vs ')}</p>
       </div>
       
       <div className="flex-1 w-full min-h-[350px]">
@@ -103,12 +107,33 @@ export default function PositionChart({ data }) {
                 verticalAlign="bottom"
                 align="center"
               />
-              <Bar dataKey="count2025" name="2025" stackId="a" fill="#1e40af" radius={[0, 0, 4, 4]} maxBarSize={50}>
-                <LabelList content={<CustomLabel />} dataKey="count2025" />
-              </Bar>
-              <Bar dataKey="count2026" name="TD 2026" stackId="a" fill="#f97316" radius={[4, 4, 0, 0]} maxBarSize={50}>
-                <LabelList content={<CustomLabel />} dataKey="count2026" />
-              </Bar>
+              {selectedYears.map((year, idx) => {
+                const isFirst = idx === 0;
+                const isLast = idx === selectedYears.length - 1;
+                // For stacked bars, bottom radius is applied to the first element, top radius to the last
+                let radius = [0, 0, 0, 0];
+                if (selectedYears.length === 1) {
+                  radius = [4, 4, 4, 4];
+                } else if (isFirst) {
+                  radius = [0, 0, 4, 4];
+                } else if (isLast) {
+                  radius = [4, 4, 0, 0];
+                }
+
+                return (
+                  <Bar 
+                    key={year}
+                    dataKey={`count${year}`} 
+                    name={`Tahun ${year}`} 
+                    stackId="a" 
+                    fill={YEAR_COLORS[idx % YEAR_COLORS.length]} 
+                    radius={radius} 
+                    maxBarSize={50}
+                  >
+                    <LabelList content={(props) => <CustomLabel {...props} year={year} />} dataKey={`count${year}`} />
+                  </Bar>
+                );
+              })}
             </BarChart>
           </ResponsiveContainer>
         ) : (

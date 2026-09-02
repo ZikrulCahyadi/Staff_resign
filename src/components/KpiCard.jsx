@@ -4,10 +4,7 @@ export default function KpiCard({
   title, 
   totalValue, 
   totalPercentage, 
-  val2025, 
-  perc2025, 
-  val2026, 
-  perc2026, 
+  breakdowns = [], 
   color = 'slate' 
 }) {
   
@@ -42,33 +39,29 @@ export default function KpiCard({
         </span>
       </div>
 
-      {/* Breakdown 2025 vs 2026 (Relaxed layout, no harsh dividers) */}
-      <div className="flex items-center gap-6 mt-auto">
-        <div className="flex flex-col">
-          <span className="text-[10px] font-medium text-slate-400 uppercase mb-0.5">Tahun 2025</span>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-sm font-bold text-slate-700">
-              {val2025 != null ? val2025.toLocaleString() : '0'}
-            </span>
-            {perc2025 !== undefined && (
-              <span className="text-xs font-semibold text-slate-400">({perc2025}%)</span>
-            )}
-          </div>
+      {/* Breakdowns */}
+      {breakdowns.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between bg-slate-50/80 rounded-xl p-3 mt-auto border border-slate-100 gap-y-2 gap-x-1">
+          {breakdowns.map((b, index) => (
+            <React.Fragment key={b.year}>
+              <div className="flex flex-col flex-1 min-w-[30%]">
+                <span className="text-[10px] font-bold text-slate-400 mb-0.5">TAHUN {b.year}</span>
+                <div className="flex items-baseline gap-1 flex-wrap">
+                  <span className="text-[14px] font-bold text-slate-700">
+                    {b.value != null ? b.value.toLocaleString() : '0'}
+                  </span>
+                  {b.percentage !== undefined && (
+                    <span className="text-[10px] font-medium text-slate-500">({b.percentage}%)</span>
+                  )}
+                </div>
+              </div>
+              {index < breakdowns.length - 1 && breakdowns.length <= 3 && (
+                <div className="w-px h-8 bg-slate-200/80 mx-1"></div>
+              )}
+            </React.Fragment>
+          ))}
         </div>
-        
-        <div className="flex flex-col">
-          <span className="text-[10px] font-medium text-slate-400 uppercase mb-0.5">Tahun 2026</span>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-sm font-bold text-slate-700">
-              {val2026 != null ? val2026.toLocaleString() : '0'}
-            </span>
-            {perc2026 !== undefined && (
-              <span className="text-xs font-semibold text-slate-400">({perc2026}%)</span>
-            )}
-          </div>
-        </div>
-      </div>
-      
+      )}
     </div>
   );
 }

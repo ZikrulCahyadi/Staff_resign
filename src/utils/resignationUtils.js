@@ -54,13 +54,7 @@ export const getYearData = (data, year) => {
     const date = new Date(item.resign_date);
     const itemYear = date.getFullYear();
     
-    if (itemYear !== year) return false;
-    
-    // For 2026, only include up to July (month 0-6 in Date object)
-    if (year === 2026) {
-      return date.getMonth() <= 6; 
-    }
-    return true;
+    return itemYear === year;
   });
 };
 
@@ -116,86 +110,96 @@ export const getNonAlumniSummary = (data, year) => {
   };
 };
 
-export const getClusterAnalysis = (data2025, data2026) => {
-  const clusterMap = new Map();
-  
-  const processData = (data, year) => {
-    const total = data.length;
-    data.forEach(item => {
-      const cluster = normalizeCluster(item.cluster_resign);
-      if (!clusterMap.has(cluster)) {
-        clusterMap.set(cluster, {
-          cluster,
-          count2025: 0,
-          perc2025: 0,
-          count2026: 0,
-          perc2026: 0,
-          descriptions: new Set()
-        });
-      }
-      const entry = clusterMap.get(cluster);
-      if (year === 2025) {
-        entry.count2025++;
-      } else {
-        entry.count2026++;
-      }
-      
-      if (item.deskripsi_resign && String(item.deskripsi_resign).trim() !== '') {
-        entry.descriptions.add(String(item.deskripsi_resign).trim());
-      }
-    });
-  };
-
-  processData(data2025, 2025);
-  processData(data2026, 2026);
-  
-  const total2025 = data2025.length;
-  const total2026 = data2026.length;
-
-  return Array.from(clusterMap.values()).map(entry => {
-    entry.perc2025 = calculatePercentage(entry.count2025, total2025);
-    entry.perc2026 = calculatePercentage(entry.count2026, total2026);
-    entry.desc = Array.from(entry.descriptions).slice(0, 3).join(', ') + (entry.descriptions.size > 3 ? '...' : '');
-    return entry;
-  }).sort((a, b) => (b.count2025 + b.count2026) - (a.count2025 + a.count2026));
+const CLUSTER_DESCRIPTIONS = {
+  'Pindah perusahaan': 'Mendapat Job baru (Gaji/ Jabatan Naik, Dekat Keluarga)',
+  'Working Condition': 'Resign karena beban kerja, jam kerja panjang, kelelahan bekerja, tekanan/ konflik dgn atasan, kunjungan manajemen tinggi',
+  'Under perform': 'PHK/ Evaluasi Kinerja, Tidak Mampu mengikuti Ritme & target Kebun',
+  'Efisiensi': 'Efisiensi/ PHK',
+  'Keluarga': 'Mengurus keluarga sakit, dekat dengan keluarga',
+  'Pergi tanpa Keterangan': 'Keluar kebun tanpa konfirmasi/ indikasi manipulasi',
+  'Hbs Kontrak': 'Habis kontrak',
+  'Kasus': 'Kriminal/ Integritas/ Fraud/ Temuan Audit & tidak sesuai budaya perusahaan',
+  'Indisipliner': 'Mangkir,tidak ada motivasi kerja'
 };
 
-export const getPositionAnalysis = (data2025, data2026) => {
+export const getClusterAnalysis = (data, selectedYears) => {
+  const clusterMap = new Map();
+  
+  // Calculate total per year for percentages
+  const totalsByYear = {};
+  selectedYears.forEach(y => {
+    totalsByYear[y] = data.filter(item => item.resign_date && new Date(item.resign_date).getFullYear() === y).length;
+  });
+
+  data.forEach(item => {
+    if (!item.resign_date) return;
+    const date = new Date(item.resign_date);
+    const year = date.getFullYear();
+    
+    if (!selectedYears.includes(year)) return;
+
+    const cluster = normalizeCluster(item.cluster_resign);
+    if (!clusterMap.has(cluster)) {
+      const initialCounts = {};
+      selectedYears.forEach(y => initialCounts[`count${y}`] = 0);
+      clusterMap.set(cluster, {
+        cluster,
+        ...initialCounts,
+        totalCount: 0
+      });
+    }
+    
+    const entry = clusterMap.get(cluster);
+    entry[`count${year}`]++;
+    entry.totalCount++;
+  });
+
+  return Array.from(clusterMap.values()).map(entry => {
+    selectedYears.forEach(y => {
+      entry[`perc${y}`] = calculatePercentage(entry[`count${y}`], totalsByYear[y]);
+    });
+    // Use standard descriptions, fallback to empty string
+    entry.desc = CLUSTER_DESCRIPTIONS[entry.cluster] || '';
+    return entry;
+  });
+};
+
+export const getPositionAnalysis = (data, selectedYears) => {
   const posMap = new Map();
   
-  const processData = (data, year) => {
-    const total = data.length;
-    data.forEach(item => {
-      const jabatan = normalizeJabatan(item.jabatan);
-      if (!posMap.has(jabatan)) {
-        posMap.set(jabatan, {
-          jabatan,
-          count2025: 0,
-          perc2025: 0,
-          count2026: 0,
-          perc2026: 0
-        });
-      }
-      const entry = posMap.get(jabatan);
-      if (year === 2025) {
-        entry.count2025++;
-      } else {
-        entry.count2026++;
-      }
-    });
-  };
+  const totalsByYear = {};
+  selectedYears.forEach(y => {
+    totalsByYear[y] = data.filter(item => item.resign_date && new Date(item.resign_date).getFullYear() === y).length;
+  });
 
-  processData(data2025, 2025);
-  processData(data2026, 2026);
-  
-  const total2025 = data2025.length;
-  const total2026 = data2026.length;
+  data.forEach(item => {
+    if (!item.resign_date) return;
+    const year = new Date(item.resign_date).getFullYear();
+    
+    if (!selectedYears.includes(year)) return;
+
+    const jabatan = normalizeJabatan(item.jabatan);
+    if (!posMap.has(jabatan)) {
+      const initialCounts = {};
+      selectedYears.forEach(y => initialCounts[`count${y}`] = 0);
+      posMap.set(jabatan, {
+        jabatan,
+        ...initialCounts,
+        totalCount: 0
+      });
+    }
+    
+    const entry = posMap.get(jabatan);
+    entry[`count${year}`]++;
+    entry.totalCount++;
+  });
 
   return Array.from(posMap.values()).map(entry => {
-    entry.perc2025 = calculatePercentage(entry.count2025, total2025);
-    entry.perc2026 = calculatePercentage(entry.count2026, total2026);
+    selectedYears.forEach(y => {
+      entry[`perc${y}`] = calculatePercentage(entry[`count${y}`], totalsByYear[y]);
+    });
     return entry;
-  }).sort((a, b) => (b.count2025 + b.count2026) - (a.count2025 + a.count2026)).slice(0, 20); // Limit to top 20 for chart readability
+  }).sort((a, b) => b.totalCount - a.totalCount).slice(0, 20);
 };
 
 export const getTopEstates = (data, year) => {
@@ -232,25 +236,22 @@ export const getTopEstates = (data, year) => {
   }).sort((a, b) => b.total - a.total).slice(0, 10);
 };
 
-const getMonthsLabels = () => {
+const getMonthsLabels = (selectedYears) => {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
   const labels = [];
   
-  // 2025 Jan-Des
-  for (let i = 0; i < 12; i++) {
-    labels.push({ label: `${months[i]} 2025`, year: 2025, monthIndex: i });
-  }
-  
-  // 2026 Jan-Jul
-  for (let i = 0; i < 7; i++) {
-    labels.push({ label: `${months[i]} 2026`, year: 2026, monthIndex: i });
-  }
+  // Create monthly labels for each selected year
+  [...selectedYears].sort().forEach(year => {
+    for (let i = 0; i < 12; i++) {
+      labels.push({ label: `${months[i]} ${year}`, year, monthIndex: i });
+    }
+  });
   
   return labels;
 };
 
-export const getMonthlyTrend = (data) => {
-  const labels = getMonthsLabels();
+export const getMonthlyTrend = (data, selectedYears) => {
+  const labels = getMonthsLabels(selectedYears);
   
   // Initialize counts
   const trendData = labels.map((l, index) => ({
@@ -265,6 +266,8 @@ export const getMonthlyTrend = (data) => {
     if (!item.resign_date) return;
     const date = new Date(item.resign_date);
     const year = date.getFullYear();
+    if (!selectedYears.includes(year)) return;
+    
     const monthIndex = date.getMonth();
     
     const targetLabel = labels.find(l => l.year === year && l.monthIndex === monthIndex);
@@ -280,6 +283,7 @@ export const getMonthlyTrend = (data) => {
     }
   });
   
+  // Optional: remove trailing months with 0 total across all if needed, but for now we leave it intact.
   return trendData;
 };
 
