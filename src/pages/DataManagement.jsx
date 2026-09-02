@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Search, X } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, Edit, Trash2, Search, X, Filter, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import { getEmployeesData, createEmployee, updateEmployee, deleteEmployee } from '../services/resignationService';
 
 export default function DataManagement() {
@@ -7,11 +7,31 @@ export default function DataManagement() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [regionFilter, setRegionFilter] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  // Extract unique regions for filter dropdown
+  const regionOptions = useMemo(() => {
+    const regions = [...new Set(data.map(item => item.region).filter(Boolean))].sort();
+    return regions;
+  }, [data]);
+
+  // Helper to format date
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '-';
+    try {
+      return new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  };
   
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [viewingEmployee, setViewingEmployee] = useState(null);
   
   // Form state
   const initialFormState = {
@@ -108,37 +128,67 @@ export default function DataManagement() {
     }
   };
 
-  const filteredData = data.filter(item => 
-    item.nama?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    item.employee_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.jabatan?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredData = data.filter(item => {
+    const matchesSearch = !searchTerm || 
+      item.nama?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      item.employee_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.jabatan?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.kebun?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesRegion = !regionFilter || item.region === regionFilter;
+    return matchesSearch && matchesRegion;
+  });
+
+  // Pagination
+  const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = startIndex + rowsPerPage;
+  const paginatedData = filteredData.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filter/search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, regionFilter]);
 
   return (
     <div className="w-full space-y-4">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Manajemen Data Karyawan</h1>
-          <p className="text-sm text-slate-500">Kelola data resign karyawan (Staff_resign)</p>
-        </div>
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-64">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Cari NIK, Nama, Jabatan..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-            />
+      <div className="flex flex-col gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-slate-800">Manajemen Data Karyawan</h1>
+            <p className="text-sm text-slate-500">Kelola data resign karyawan (Staff_resign) — <span className="font-medium text-emerald-600">{filteredData.length}</span> data ditampilkan</p>
           </div>
-          <button 
-            onClick={() => handleOpenModal()}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          >
-            <Plus size={16} />
-            <span className="hidden sm:inline">Tambah Data</span>
-          </button>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto sm:ml-auto mt-2 sm:mt-0">
+            <div className="relative w-full sm:w-48">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Cari..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+              />
+            </div>
+            <div className="relative w-full sm:w-40">
+              <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <select
+                value={regionFilter}
+                onChange={(e) => setRegionFilter(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white appearance-none cursor-pointer"
+              >
+                <option value="">Semua Region</option>
+                {regionOptions.map(region => (
+                  <option key={region} value={region}>{region}</option>
+                ))}
+              </select>
+            </div>
+            <button 
+              onClick={() => handleOpenModal()}
+              className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-colors shrink-0 w-full sm:w-auto"
+            >
+              <Plus size={16} />
+              <span>Tambah Data</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -147,46 +197,72 @@ export default function DataManagement() {
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3 font-semibold">NIK</th>
-                <th className="px-4 py-3 font-semibold">Nama</th>
-                <th className="px-4 py-3 font-semibold">Jabatan</th>
-                <th className="px-4 py-3 font-semibold">Kebun/Region</th>
-                <th className="px-4 py-3 font-semibold text-center">Jenis</th>
-                <th className="px-4 py-3 font-semibold">Cluster</th>
-                <th className="px-4 py-3 font-semibold text-right">Aksi</th>
+                <th className="px-3 py-3 font-semibold whitespace-nowrap">NIK</th>
+                <th className="px-3 py-3 font-semibold whitespace-nowrap">Nama</th>
+                <th className="px-3 py-3 font-semibold whitespace-nowrap">Jabatan</th>
+                <th className="px-3 py-3 font-semibold whitespace-nowrap">Kebun</th>
+                <th className="px-3 py-3 font-semibold whitespace-nowrap">Region</th>
+                <th className="px-3 py-3 font-semibold whitespace-nowrap">Tgl Bergabung</th>
+                <th className="px-3 py-3 font-semibold whitespace-nowrap">Tgl Resign</th>
+                <th className="px-3 py-3 font-semibold text-center whitespace-nowrap">Jenis</th>
+                <th className="px-3 py-3 font-semibold whitespace-nowrap">Cluster</th>
+                <th className="px-3 py-3 font-semibold text-center whitespace-nowrap">Alumni</th>
+                <th className="px-3 py-3 font-semibold whitespace-nowrap">Deskripsi</th>
+                <th className="px-3 py-3 font-semibold whitespace-nowrap">Keterangan</th>
+                <th className="px-3 py-3 font-semibold text-right whitespace-nowrap">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="px-4 py-8 text-center text-slate-500">Memuat data...</td>
+                  <td colSpan="13" className="px-4 py-8 text-center text-slate-500">Memuat data...</td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan="7" className="px-4 py-8 text-center text-rose-500">{error}</td>
+                  <td colSpan="13" className="px-4 py-8 text-center text-rose-500">{error}</td>
                 </tr>
               ) : filteredData.length > 0 ? (
-                filteredData.map((employee, index) => (
+                paginatedData.map((employee, index) => (
                   <tr key={index} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-700">{employee.employee_id}</td>
-                    <td className="px-4 py-3 text-slate-600">{employee.nama}</td>
-                    <td className="px-4 py-3 text-slate-600">{employee.jabatan}</td>
-                    <td className="px-4 py-3 text-slate-600">
-                      <div>{employee.kebun}</div>
-                      <div className="text-[10px] text-slate-400">{employee.region}</div>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`px-2 py-1 rounded text-[10px] font-bold ${
+                    <td className="px-3 py-3 font-medium text-slate-700 whitespace-nowrap">{employee.employee_id}</td>
+                    <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{employee.nama}</td>
+                    <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{employee.jabatan || '-'}</td>
+                    <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{employee.kebun || '-'}</td>
+                    <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{employee.region || '-'}</td>
+                    <td className="px-3 py-3 text-slate-600 whitespace-nowrap text-xs">{formatDate(employee.join_date)}</td>
+                    <td className="px-3 py-3 text-slate-600 whitespace-nowrap text-xs">{formatDate(employee.resign_date)}</td>
+                    <td className="px-3 py-3 text-center">
+                      <span className={`px-2 py-1 rounded text-[10px] font-bold whitespace-nowrap ${
                         employee.jenis_resign === 'VT' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
                       }`}>
-                        {employee.jenis_resign}
+                        {employee.jenis_resign === 'VT' ? 'VOLUNTARY' : employee.jenis_resign === 'IT' ? 'INVOLUNTARY' : employee.jenis_resign}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-600 text-xs truncate max-w-[150px]" title={employee.cluster_resign}>
-                      {employee.cluster_resign}
+                    <td className="px-3 py-3 text-slate-600 text-xs max-w-[180px] truncate" title={employee.cluster_resign}>
+                      {employee.cluster_resign || '-'}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-2">
+                    <td className="px-3 py-3 text-center">
+                      <span className={`px-2 py-1 rounded text-[10px] font-bold whitespace-nowrap ${
+                        employee.alumni === 'ALUMNI' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {employee.alumni || '-'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-slate-500 text-xs max-w-[200px] truncate" title={employee.deskripsi_resign}>
+                      {employee.deskripsi_resign || '-'}
+                    </td>
+                    <td className="px-3 py-3 text-slate-500 text-xs max-w-[150px] truncate" title={employee.keterangan}>
+                      {employee.keterangan || '-'}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <div className="flex justify-end gap-1">
+                        <button 
+                          onClick={() => setViewingEmployee(employee)}
+                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded"
+                          title="Lihat Detail"
+                        >
+                          <Eye size={16} />
+                        </button>
                         <button 
                           onClick={() => handleOpenModal(employee)}
                           className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
@@ -207,11 +283,51 @@ export default function DataManagement() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="7" className="px-4 py-8 text-center text-slate-500">Tidak ada data ditemukan</td>
+                  <td colSpan="13" className="px-4 py-8 text-center text-slate-500">Tidak ada data ditemukan</td>
                 </tr>
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Footer */}
+        <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-3 border-t border-slate-200 gap-3">
+          <div className="flex items-center gap-2 text-sm text-slate-600">
+            <span>Tampilkan</span>
+            <select
+              value={rowsPerPage}
+              onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+              className="border border-slate-300 rounded px-2 py-1 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+            <span>data per halaman</span>
+          </div>
+          <div className="flex items-center gap-3 text-sm text-slate-600">
+            <span>
+              Menampilkan {filteredData.length > 0 ? startIndex + 1 : 0} - {Math.min(endIndex, filteredData.length)} dari {filteredData.length} data
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="p-1 rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span className="px-2 font-medium text-slate-700">{currentPage} / {totalPages || 1}</span>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage >= totalPages}
+                className="p-1 rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -308,6 +424,72 @@ export default function DataManagement() {
                     Menyimpan...
                   </>
                 ) : 'Simpan Data'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Detail View Modal */}
+      {viewingEmployee && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4" onClick={() => setViewingEmployee(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-gradient-to-r from-emerald-600 to-teal-600">
+              <div>
+                <h2 className="text-lg font-bold text-white">Detail Karyawan</h2>
+                <p className="text-emerald-100 text-sm">{viewingEmployee.employee_id}</p>
+              </div>
+              <button onClick={() => setViewingEmployee(null)} className="text-white/70 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-5 overflow-y-auto flex-1 space-y-4">
+              <div className="text-center pb-4 border-b border-slate-100">
+                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <span className="text-2xl font-bold text-emerald-700">{viewingEmployee.nama?.charAt(0)}</span>
+                </div>
+                <h3 className="text-lg font-bold text-slate-800">{viewingEmployee.nama}</h3>
+                <p className="text-sm text-slate-500">{viewingEmployee.jabatan || '-'}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'NIK', value: viewingEmployee.employee_id },
+                  { label: 'Nama', value: viewingEmployee.nama },
+                  { label: 'Jabatan', value: viewingEmployee.jabatan },
+                  { label: 'Kebun', value: viewingEmployee.kebun },
+                  { label: 'Region', value: viewingEmployee.region },
+                  { label: 'Tanggal Bergabung', value: formatDate(viewingEmployee.join_date) },
+                  { label: 'Tanggal Resign', value: formatDate(viewingEmployee.resign_date) },
+                  { label: 'Jenis Resign', value: viewingEmployee.jenis_resign === 'VT' ? 'Voluntary (VT)' : viewingEmployee.jenis_resign === 'IT' ? 'Involuntary (IT)' : viewingEmployee.jenis_resign },
+                  { label: 'Cluster Resign', value: viewingEmployee.cluster_resign },
+                  { label: 'Status Alumni', value: viewingEmployee.alumni },
+                ].map((item, i) => (
+                  <div key={i} className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">{item.label}</p>
+                    <p className="text-sm font-medium text-slate-700 mt-0.5">{item.value || '-'}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Deskripsi Resign</p>
+                <p className="text-sm text-slate-700 mt-1 leading-relaxed">{viewingEmployee.deskripsi_resign || '-'}</p>
+              </div>
+
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Keterangan Tambahan</p>
+                <p className="text-sm text-slate-700 mt-1 leading-relaxed">{viewingEmployee.keterangan || '-'}</p>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 flex justify-end gap-2 bg-slate-50">
+              <button 
+                onClick={() => setViewingEmployee(null)}
+                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+              >
+                Tutup
               </button>
             </div>
           </div>

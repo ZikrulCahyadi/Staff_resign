@@ -1,9 +1,14 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load .env from project root (parent of server/)
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -11,47 +16,58 @@ const port = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || '';
+const MISTRAL_MODEL = 'mistral-small-latest';
+const MISTRAL_URL = 'https://api.mistral.ai/v1/chat/completions';
 
 app.post('/api/insight', async (req, res) => {
   try {
     const { trendData, metadata } = req.body;
     
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: 'GEMINI_API_KEY is not configured in .env' });
+    if (!MISTRAL_API_KEY) {
+      return res.status(500).json({ error: 'MISTRAL_API_KEY is not configured in .env' });
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-
     const prompt = `
-Anda adalah seorang analis data HR (Human Resources) profesional.
-Berikan analisis mendalam (insight) berdasarkan data agregat turnover (resignation) berikut.
+Anda adalah analis data HR. Berikan insight berdasarkan data turnover berikut dalam format JSON.
 
-DATA TURNOVER BULANAN:
+DATA TURNOVER:
 ${JSON.stringify(trendData, null, 2)}
 
-METADATA (Analisis Trend Linear):
-- Arah Trend Involuntary (IT): ${metadata.itSlope > 0 ? 'Meningkat' : metadata.itSlope < 0 ? 'Menurun' : 'Stabil'} (Slope: ${metadata.itSlope.toFixed(2)})
-- Arah Trend Voluntary (VT): ${metadata.vtSlope > 0 ? 'Meningkat' : metadata.vtSlope < 0 ? 'Menurun' : 'Stabil'} (Slope: ${metadata.vtSlope.toFixed(2)})
-- Region Filter: ${metadata.region}
-
-PERHATIAN: 
-- Tahun 2025 adalah data setahun penuh (Jan-Des).
-- Tahun 2026 HANYA menggunakan data sampai Juli 2026. Jangan menyimpulkan bahwa 2026 lebih rendah totalnya secara absolut tanpa menyadari periode yang lebih singkat ini.
-
-Berikan analisis dalam bahasa Indonesia yang profesional dan mudah dipahami yang mencakup:
-1. Apakah Involuntary (IT) meningkat atau menurun?
-2. Apakah Voluntary (VT) meningkat atau menurun?
-3. Mana yang lebih dominan antara IT dan VT?
-4. Perbandingan performa 2025 vs 2026.
-5. Temuan penting berdasarkan data (sebutkan bulan dengan angka resign tinggi atau pola yang menarik).
-
-Jangan membuat kesimpulan di luar data yang diberikan. Jangan menggunakan format markdown yang berlebihan. Gunakan paragraf yang rapi dan mudah dibaca (boleh menggunakan bullet points jika perlu).
+Tugas Anda:
+Kembalikan HANYA objek JSON dengan struktur persis seperti ini:
+{
+  "summary": "1-2 kalimat kesimpulan singkat yang MENGANALISIS POLA FLUKTUASI aktual pada data (misal: naik turunnya pada bulan apa saja). Jangan hanya menyebut 'meningkat terus' jika datanya berfluktuasi tajam."
+}
+Pastikan hanya mengembalikan JSON Valid.
 `;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    const response = await fetch(MISTRAL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${MISTRAL_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: MISTRAL_MODEL,
+        messages: [
+          { role: 'system', content: 'Anda adalah analis data HR.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.1,
+        max_tokens: 1024,
+        response_format: { type: 'json_object' }
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error('Mistral API error:', response.status, errorBody);
+      throw new Error(`Mistral API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content || 'Tidak ada insight yang dihasilkan.';
     
     res.json({ insight: text });
   } catch (error) {
@@ -60,6 +76,14 @@ Jangan membuat kesimpulan di luar data yang diberikan. Jangan menggunakan format
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
+const start = async () => {
+  try {
+    await app.listen(port);
+    console.log(`Server running on port ${port}`);
+  } catch (err) {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  }
+};
+
+start();

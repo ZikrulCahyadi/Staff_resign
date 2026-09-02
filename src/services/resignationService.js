@@ -6,16 +6,35 @@ export const getEmployeesData = async () => {
       throw new Error("Kredensial Supabase belum dikonfigurasi di file .env");
     }
     
-    const { data, error } = await supabase
-      .from('Staff_resign')
-      .select('employee_id, nama, join_date, resign_date, jabatan, kebun, deskripsi_resign, jenis_resign, cluster_resign, alumni, keterangan, region');
+    // Fetch all rows by paginating through Supabase's 1000-row default limit
+    const PAGE_SIZE = 1000;
+    let allData = [];
+    let from = 0;
+    let hasMore = true;
 
-    if (error) {
-      console.error('Error fetching employees:', error);
-      throw error;
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('Staff_resign')
+        .select('*')
+        .order('resign_date', { ascending: false })
+        .range(from, from + PAGE_SIZE - 1);
+
+      if (error) {
+        console.error('Error fetching employees:', error);
+        throw error;
+      }
+
+      if (data && data.length > 0) {
+        allData = [...allData, ...data];
+        from += PAGE_SIZE;
+        // If we got fewer rows than PAGE_SIZE, we've reached the end
+        hasMore = data.length === PAGE_SIZE;
+      } else {
+        hasMore = false;
+      }
     }
 
-    return data;
+    return allData;
   } catch (err) {
     console.error('Supabase connection error:', err);
     throw err;
