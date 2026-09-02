@@ -1,6 +1,9 @@
 export const normalizeJenisResign = (jenis) => {
   if (!jenis) return 'UNKNOWN';
-  return String(jenis).trim().toUpperCase();
+  const val = String(jenis).trim().toUpperCase();
+  if (val === 'VT' || val === 'VOLUNTARY') return 'VOLUNTARY';
+  if (val === 'IT' || val === 'INVOLUNTARY') return 'INVOLUNTARY';
+  return val;
 };
 
 export const normalizeAlumni = (alumni) => {
