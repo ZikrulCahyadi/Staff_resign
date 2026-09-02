@@ -5,8 +5,8 @@ import { getAIInsight } from '../services/aiInsightService';
 
 const TrendIcon = ({ trend }) => {
   const t = trend?.toLowerCase() || '';
-  if (t.includes('naik') || t.includes('meningkat')) return <TrendingUp size={14} className="text-rose-500 shrink-0" />;
-  if (t.includes('turun') || t.includes('menurun')) return <TrendingDown size={14} className="text-emerald-500 shrink-0" />;
+  if (t.includes('naik') || t.includes('meningkat')) return <TrendingUp size={14} className="text-emerald-500 shrink-0" />;
+  if (t.includes('turun') || t.includes('menurun')) return <TrendingDown size={14} className="text-rose-500 shrink-0" />;
   return <Minus size={14} className="text-slate-400 shrink-0" />;
 };
 
