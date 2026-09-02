@@ -43,9 +43,34 @@ const CustomLabel = (props) => {
   );
 };
 
+const PREFERRED_ORDER = [
+  'Pindah perusahaan',
+  'Working Condition',
+  'Under perform',
+  'Keluarga',
+  'Efisiensi',
+  'Kasus',
+  'Pergi tanpa Keterangan',
+  'Hbs Kontrak',
+  'Indisipliner'
+];
+
 export default function ClusterChart({ data }) {
-  // Use top 8 clusters and reverse so the largest is at the top in vertical layout
-  const chartData = [...data].slice(0, 8).reverse();
+  // Sort data based on PREFERRED_ORDER
+  const chartData = [...data]
+    .sort((a, b) => {
+      const indexA = PREFERRED_ORDER.indexOf(a.cluster);
+      const indexB = PREFERRED_ORDER.indexOf(b.cluster);
+      // If both are in the list, sort by their index in PREFERRED_ORDER
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      // If A is in list but B is not, A comes first
+      if (indexA !== -1) return -1;
+      // If B is in list but A is not, B comes first
+      if (indexB !== -1) return 1;
+      // Otherwise sort by total count
+      return (b.count2025 + b.count2026) - (a.count2025 + a.count2026);
+    })
+    .slice(0, 9);
 
   return (
     <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 h-full flex flex-col hover:shadow-md transition-shadow duration-300">

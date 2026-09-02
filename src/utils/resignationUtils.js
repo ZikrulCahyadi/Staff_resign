@@ -16,7 +16,21 @@ export const normalizeAlumni = (alumni) => {
 
 export const normalizeCluster = (cluster) => {
   if (!cluster || String(cluster).trim() === '') return 'Tidak Dikategorikan';
-  return String(cluster).trim();
+  const c = String(cluster).trim().toLowerCase();
+  
+  if (c.includes('pindah')) return 'Pindah perusahaan';
+  if (c.includes('working')) return 'Working Condition';
+  if (c.includes('under perform')) return 'Under perform';
+  if (c.includes('keluarga')) return 'Keluarga';
+  if (c.includes('efisiensi')) return 'Efisiensi';
+  if (c.includes('kasus')) return 'Kasus';
+  if (c.includes('tanpa keterangan')) return 'Pergi tanpa Keterangan';
+  if (c.includes('kontrak')) return 'Hbs Kontrak';
+  if (c.includes('indisipliner')) return 'Indisipliner';
+  
+  // Title case fallback
+  const fallback = String(cluster).trim();
+  return fallback.charAt(0).toUpperCase() + fallback.slice(1).toLowerCase();
 };
 
 export const normalizeJabatan = (jabatan) => {

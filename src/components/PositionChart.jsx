@@ -46,6 +46,23 @@ const CustomLabel = (props) => {
   );
 };
 
+const CustomXAxisTick = ({ x, y, payload }) => {
+  if (!payload || !payload.value) return null;
+  const words = payload.value.split(' ');
+  const half = Math.ceil(words.length / 2);
+  const line1 = words.length > 1 ? words.slice(0, half).join(' ') : payload.value;
+  const line2 = words.length > 1 ? words.slice(half).join(' ') : '';
+
+  return (
+    <g transform={`translate(${x},${y + 12})`}>
+      <text x={0} y={0} dy={12} textAnchor="middle" fill="#64748b" fontSize="10" fontWeight="500">
+        <tspan x="0" dy="0">{line1}</tspan>
+        {line2 && <tspan x="0" dy="14">{line2}</tspan>}
+      </text>
+    </g>
+  );
+};
+
 export default function PositionChart({ data }) {
   // Use top 6 for vertical chart readability, reversed so largest is on the right or just leave as is
   // Actually, sort ascending so the largest is on the right side of the x-axis
@@ -70,7 +87,9 @@ export default function PositionChart({ data }) {
                 dataKey="jabatan" 
                 axisLine={false} 
                 tickLine={false} 
-                tick={{ fill: '#64748b', fontSize: 11, fontWeight: '500' }} 
+                tick={<CustomXAxisTick />}
+                interval={0}
+                height={60}
               />
               <YAxis 
                 axisLine={false} 
