@@ -107,6 +107,7 @@ export default function ResignationDashboard() {
   const clusterData = useMemo(() => getClusterAnalysis(filteredData, selectedYears), [filteredData, selectedYears]);
   const positionData = useMemo(() => getPositionAnalysis(filteredData, selectedYears), [filteredData, selectedYears]);
   
+  // Fetch trend data
   const trendData = useMemo(() => getMonthlyTrend(filteredData, selectedYears), [filteredData, selectedYears]);
   
   const trendLines = useMemo(() => {

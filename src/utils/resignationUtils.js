@@ -286,7 +286,16 @@ export const getMonthlyTrend = (data, selectedYears) => {
     }
   });
   
-  // Optional: remove trailing months with 0 total across all if needed, but for now we leave it intact.
+  // Remove trailing months with 0 total (future months with no data)
+  let lastDataIndex = trendData.length - 1;
+  while (lastDataIndex >= 0 && trendData[lastDataIndex].total === 0) {
+    lastDataIndex--;
+  }
+  
+  if (lastDataIndex >= 0) {
+    return trendData.slice(0, lastDataIndex + 1);
+  }
+  
   return trendData;
 };
 
