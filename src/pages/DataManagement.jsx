@@ -129,11 +129,12 @@ export default function DataManagement() {
   };
 
   const filteredData = data.filter(item => {
+    const searchLower = searchTerm.toLowerCase();
     const matchesSearch = !searchTerm || 
-      item.nama?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      item.employee_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.jabatan?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.kebun?.toLowerCase().includes(searchTerm.toLowerCase());
+      String(item.nama || '').toLowerCase().includes(searchLower) || 
+      String(item.employee_id || '').toLowerCase().includes(searchLower) ||
+      String(item.jabatan || '').toLowerCase().includes(searchLower) ||
+      String(item.kebun || '').toLowerCase().includes(searchLower);
     const matchesRegion = !regionFilter || item.region === regionFilter;
     return matchesSearch && matchesRegion;
   });
