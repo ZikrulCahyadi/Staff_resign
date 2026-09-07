@@ -34,7 +34,14 @@ export default function AIInsight({ trendData, metadata }) {
       } catch (err) {
         if (isMounted) {
           console.error("AI Insight error:", err);
-          setError(err.message || "Gagal menghasilkan insight dari AI. Pastikan server backend berjalan dan API Key terkonfigurasi.");
+          
+          // Graceful fallback if AI is down (e.g. 503) or rate limited (429)
+          const fallbackData = {
+            summary: "Catatan: Server AI (Google/Mistral) saat ini sedang sibuk/down atau limit tercapai. Ini adalah pesan otomatis. Berdasarkan data historis, terjadi fluktuasi tingkat resignasi karyawan. Mohon perhatikan bulan dengan jumlah 'VT' dan 'IT' tertinggi untuk melakukan mitigasi pencegahan pada bulan-bulan tersebut di tahun berikutnya."
+          };
+          
+          setInsight(JSON.stringify(fallbackData));
+          setError(null); // Jangan tampilkan kotak merah error, tampilkan fallback saja
         }
       } finally {
         if (isMounted) setLoading(false);
