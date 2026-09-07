@@ -86,3 +86,22 @@ export const deleteEmployee = async (employeeId) => {
     throw err;
   }
 };
+
+export const createEmployeesBatch = async (employeesData) => {
+  try {
+    if (!supabase) {
+      throw new Error("Kredensial Supabase belum dikonfigurasi di file .env");
+    }
+
+    const { data, error } = await supabase
+      .from('Staff_resign')
+      .insert(employeesData)
+      .select();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Error creating employees in batch:', err);
+    throw err;
+  }
+};

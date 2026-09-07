@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Edit, Trash2, Search, X, Filter, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, X, Filter, ChevronLeft, ChevronRight, Eye, Upload } from 'lucide-react';
 import { getEmployeesData, createEmployee, updateEmployee, deleteEmployee } from '../services/resignationService';
+import ExcelImportModal from '../components/ExcelImportModal';
 
 export default function DataManagement() {
   const [data, setData] = useState([]);
@@ -29,6 +30,7 @@ export default function DataManagement() {
   
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [viewingEmployee, setViewingEmployee] = useState(null);
@@ -182,6 +184,13 @@ export default function DataManagement() {
                 ))}
               </select>
             </div>
+            <button 
+              onClick={() => setIsImportModalOpen(true)}
+              className="flex items-center justify-center gap-2 bg-white border border-emerald-600 text-emerald-700 hover:bg-emerald-50 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors shrink-0 w-full sm:w-auto"
+            >
+              <Upload size={16} />
+              <span>Import Excel</span>
+            </button>
             <button 
               onClick={() => handleOpenModal()}
               className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-colors shrink-0 w-full sm:w-auto"
@@ -501,6 +510,16 @@ export default function DataManagement() {
           </div>
         </div>
       )}
+
+      {/* Import Modal */}
+      <ExcelImportModal 
+        isOpen={isImportModalOpen} 
+        onClose={() => setIsImportModalOpen(false)} 
+        onSuccess={(count) => {
+          alert(`${count} data berhasil di-import!`);
+          fetchData();
+        }}
+      />
     </div>
   );
 }

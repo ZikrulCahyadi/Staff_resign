@@ -34,7 +34,7 @@ export default function AIInsight({ trendData, metadata }) {
       } catch (err) {
         if (isMounted) {
           console.error("AI Insight error:", err);
-          setError("Gagal menghasilkan insight dari AI. Pastikan server backend berjalan dan API Key terkonfigurasi.");
+          setError(err.message || "Gagal menghasilkan insight dari AI. Pastikan server backend berjalan dan API Key terkonfigurasi.");
         }
       } finally {
         if (isMounted) setLoading(false);

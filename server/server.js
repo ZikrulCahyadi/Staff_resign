@@ -16,16 +16,15 @@ const port = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || '';
-const MISTRAL_MODEL = 'mistral-small-latest';
-const MISTRAL_URL = 'https://api.mistral.ai/v1/chat/completions';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent';
 
 app.post('/api/insight', async (req, res) => {
   try {
     const { trendData, metadata } = req.body;
     
-    if (!MISTRAL_API_KEY) {
-      return res.status(500).json({ error: 'MISTRAL_API_KEY is not configured in .env' });
+    if (!GEMINI_API_KEY) {
+      return res.status(500).json({ error: 'GEMINI_API_KEY is not configured in .env' });
     }
 
     const prompt = `
@@ -42,37 +41,41 @@ Kembalikan HANYA objek JSON dengan struktur persis seperti ini:
 Pastikan hanya mengembalikan JSON Valid.
 `;
 
-    const response = await fetch(MISTRAL_URL, {
+    const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${MISTRAL_API_KEY}`,
       },
       body: JSON.stringify({
-        model: MISTRAL_MODEL,
-        messages: [
-          { role: 'system', content: 'Anda adalah analis data HR.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.1,
-        max_tokens: 1024,
-        response_format: { type: 'json_object' }
+        contents: [{
+          parts: [{ text: "Anda adalah analis data HR. " + prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          responseMimeType: "application/json"
+        }
       }),
     });
 
     if (!response.ok) {
       const errorBody = await response.text();
-      console.error('Mistral API error:', response.status, errorBody);
-      throw new Error(`Mistral API error: ${response.status}`);
+      console.error('Gemini API error:', response.status, errorBody);
+      if (response.status === 429) {
+        return res.status(429).json({ error: 'Limit permintaan AI tercapai (Terlalu banyak request). Silakan tunggu beberapa saat lagi.' });
+      }
+      throw new Error(`Gemini API error: ${response.status}`);
     }
 
     const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || 'Tidak ada insight yang dihasilkan.';
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{"summary": "Tidak ada insight yang dihasilkan."}';
     
-    res.json({ insight: text });
+    // Pastikan mengembalikan string JSON murni tanpa markdown json block
+    const cleanedText = text.replace(/```json\n/g, '').replace(/```/g, '').trim();
+    
+    res.json({ insight: cleanedText });
   } catch (error) {
     console.error('Error generating AI insight:', error);
-    res.status(500).json({ error: 'Failed to generate AI insight' });
+    res.status(500).json({ error: error.message || 'Failed to generate AI insight' });
   }
 });
 
