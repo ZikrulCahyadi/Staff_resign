@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Edit, Trash2, Search, X, Filter, ChevronLeft, ChevronRight, Eye, Upload } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Plus, Edit, Trash2, Search, X, Filter, ChevronLeft, ChevronRight, Eye, Upload, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { getEmployeesData, createEmployee, updateEmployee, deleteEmployee } from '../services/resignationService';
 import ExcelImportModal from '../components/ExcelImportModal';
 
@@ -34,6 +34,19 @@ export default function DataManagement() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [viewingEmployee, setViewingEmployee] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Toast notification
+  const [toast, setToast] = useState(null);
+  const showToast = useCallback((message, type = 'success') => {
+    setToast({ message, type, id: Date.now() });
+  }, []);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2000);
+    return () => clearTimeout(t);
+  }, [toast]);
   
   // Form state
   const initialFormState = {
@@ -102,31 +115,38 @@ export default function DataManagement() {
     try {
       if (editingId) {
         await updateEmployee(editingId, formData);
-        alert("Data berhasil diperbarui!");
+        showToast('Data berhasil diperbarui!');
       } else {
         await createEmployee(formData);
-        alert("Data berhasil ditambahkan!");
+        showToast('Data berhasil ditambahkan!');
       }
       handleCloseModal();
       fetchData();
     } catch (err) {
       console.error("Error submitting form:", err);
-      alert("Gagal menyimpan data: " + (err.message || "Kesalahan pada server"));
+      showToast('Gagal menyimpan data: ' + (err.message || 'Kesalahan pada server'), 'error');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleDelete = async (id, nama) => {
-    if (window.confirm(`Apakah Anda yakin ingin menghapus data karyawan ${nama} (${id})?`)) {
-      try {
-        await deleteEmployee(id);
-        alert("Data berhasil dihapus!");
-        fetchData();
-      } catch (err) {
-        console.error("Error deleting:", err);
-        alert("Gagal menghapus data.");
-      }
+  const handleDelete = (id, nama) => {
+    setDeleteConfirm({ id, nama });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirm) return;
+    setIsDeleting(true);
+    try {
+      await deleteEmployee(deleteConfirm.id);
+      setDeleteConfirm(null);
+      showToast(`Data ${deleteConfirm.nama} berhasil dihapus.`);
+      fetchData();
+    } catch (err) {
+      console.error("Error deleting:", err);
+      showToast('Gagal menghapus data.', 'error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -516,10 +536,97 @@ export default function DataManagement() {
         isOpen={isImportModalOpen} 
         onClose={() => setIsImportModalOpen(false)} 
         onSuccess={(count) => {
-          alert(`${count} data berhasil di-import!`);
+          showToast(`${count} data berhasil di-import!`);
           fetchData();
         }}
       />
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+            {/* Top accent bar */}
+            <div className="h-1.5 bg-gradient-to-r from-rose-500 to-red-600" />
+
+            <div className="p-6">
+              {/* Icon */}
+              <div className="flex items-center justify-center w-14 h-14 bg-rose-100 rounded-2xl mx-auto mb-5">
+                <AlertTriangle className="text-rose-600" size={28} />
+              </div>
+
+              {/* Title & desc */}
+              <h2 className="text-lg font-bold text-slate-800 text-center mb-1">Hapus Data Karyawan?</h2>
+              <p className="text-sm text-slate-500 text-center mb-5">
+                Tindakan ini tidak dapat dibatalkan.
+              </p>
+
+              {/* Employee info card */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 flex items-center gap-3">
+                <div className="w-10 h-10 bg-rose-100 rounded-full flex items-center justify-center shrink-0">
+                  <span className="text-rose-700 font-bold text-base">{deleteConfirm.nama?.charAt(0)?.toUpperCase()}</span>
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-800 text-sm">{deleteConfirm.nama}</p>
+                  <p className="text-xs text-slate-500">NIK: {deleteConfirm.id}</p>
+                </div>
+              </div>
+
+              {/* Buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleConfirmDelete}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-rose-500 to-red-600 text-white rounded-xl text-sm font-semibold hover:from-rose-600 hover:to-red-700 transition-all shadow-sm shadow-rose-200 disabled:opacity-70 flex items-center justify-center gap-2"
+                >
+                  {isDeleting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Menghapus...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={15} />
+                      Ya, Hapus
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          key={toast.id}
+          className={`fixed bottom-6 right-6 z-[100] flex items-center gap-3 px-5 py-4 rounded-2xl shadow-xl text-white text-sm font-medium min-w-[280px] max-w-sm
+            transition-all duration-300 ease-out
+            ${toast.type === 'error'
+              ? 'bg-gradient-to-r from-rose-500 to-red-600'
+              : 'bg-gradient-to-r from-emerald-500 to-teal-600'
+            }`}
+        >
+          <div className="shrink-0">
+            {toast.type === 'error'
+              ? <XCircle size={22} />
+              : <CheckCircle2 size={22} />}
+          </div>
+          <span className="flex-1 leading-snug">{toast.message}</span>
+          <button
+            onClick={() => setToast(null)}
+            className="shrink-0 opacity-70 hover:opacity-100 transition-opacity"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
