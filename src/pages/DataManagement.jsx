@@ -189,7 +189,7 @@ export default function DataManagement() {
               className="flex items-center justify-center gap-2 bg-white border border-emerald-600 text-emerald-700 hover:bg-emerald-50 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors shrink-0 w-full sm:w-auto"
             >
               <Upload size={16} />
-              <span>Import Excel</span>
+              <span>Import CSV</span>
             </button>
             <button 
               onClick={() => handleOpenModal()}

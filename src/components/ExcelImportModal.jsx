@@ -66,7 +66,7 @@ export default function ExcelImportModal({ isOpen, onClose, onSuccess }) {
         const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
         
         if (rows.length < 2) {
-          throw new Error('File Excel kosong atau tidak memiliki data.');
+          throw new Error('File CSV kosong atau tidak memiliki data.');
         }
 
         // Remove header row
@@ -120,7 +120,7 @@ export default function ExcelImportModal({ isOpen, onClose, onSuccess }) {
         setStep(2);
       } catch (err) {
         console.error(err);
-        setError('Gagal membaca file Excel. Pastikan format file benar (.xlsx, .xls).');
+        setError('Gagal membaca file CSV. Pastikan format file benar (.xlsx, .xls, .csv).');
         setFile(null);
       }
     };
@@ -171,7 +171,7 @@ export default function ExcelImportModal({ isOpen, onClose, onSuccess }) {
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-100">
           <div>
-            <h2 className="text-lg font-bold text-slate-800">Import Data Excel</h2>
+            <h2 className="text-lg font-bold text-slate-800">Import Data CSV</h2>
             <p className="text-xs text-slate-500 mt-1">
               Langkah {step} dari 2: {step === 1 ? 'Pilih File' : 'Preview & Validasi'}
             </p>
@@ -197,20 +197,20 @@ export default function ExcelImportModal({ isOpen, onClose, onSuccess }) {
                 type="file" 
                 ref={fileInputRef} 
                 onChange={handleFileSelect} 
-                accept=".xlsx, .xls, .csv" 
+                accept=".csv" 
                 className="hidden" 
               />
               <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4">
                 <FileSpreadsheet size={32} />
               </div>
-              <h3 className="text-lg font-semibold text-slate-700 mb-2">Klik atau Drag file Excel ke sini</h3>
+              <h3 className="text-lg font-semibold text-slate-700 mb-2">Klik atau Drag file CSV ke sini</h3>
               <p className="text-sm text-slate-500 mb-6 text-center max-w-sm">
-                Format yang didukung: .xlsx, .xls, .csv<br/>
+                Format yang didukung: .csv<br/>
                 Pastikan baris pertama adalah header/nama kolom.
               </p>
               <button className="px-5 py-2.5 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-2">
                 <Upload size={18} />
-                Pilih File Excel
+                Pilih File CSV
               </button>
             </div>
           )}
