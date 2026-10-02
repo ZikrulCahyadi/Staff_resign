@@ -87,6 +87,21 @@ export const deleteEmployee = async (employeeId) => {
   }
 };
 
+export const insertEmployeesBulk = async (employeesArray) => {
+  try {
+    const { data, error } = await supabase
+      .from('Staff_resign')
+      .insert(employeesArray)
+      .select();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Error inserting bulk employees:', err);
+    throw err;
+  }
+};
+
 export const createEmployeesBatch = async (employeesData) => {
   try {
     if (!supabase) {

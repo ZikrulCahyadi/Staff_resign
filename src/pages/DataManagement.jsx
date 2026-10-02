@@ -1,53 +1,26 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, Edit, Trash2, Search, X, Filter, ChevronLeft, ChevronRight, Eye, Upload, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
-import { getEmployeesData, createEmployee, updateEmployee, deleteEmployee } from '../services/resignationService';
-import ExcelImportModal from '../components/ExcelImportModal';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Edit, Trash2, Search, X, Upload, Download, Check, AlertCircle } from 'lucide-react';
+import { getEmployeesData, createEmployee, updateEmployee, deleteEmployee, insertEmployeesBulk } from '../services/resignationService';
+
+import * as XLSX from 'xlsx';
 
 export default function DataManagement() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [regionFilter, setRegionFilter] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-
-  // Extract unique regions for filter dropdown
-  const regionOptions = useMemo(() => {
-    const regions = [...new Set(data.map(item => item.region).filter(Boolean))].sort();
-    return regions;
-  }, [data]);
-
-  // Helper to format date
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '-';
-    try {
-      return new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-    } catch {
-      return dateStr;
-    }
-  };
   
-  // Modal state
+  // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isImportLoading, setIsImportLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [viewingEmployee, setViewingEmployee] = useState(null);
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  // Toast notification
-  const [toast, setToast] = useState(null);
-  const showToast = useCallback((message, type = 'success') => {
-    setToast({ message, type, id: Date.now() });
-  }, []);
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2000);
-    return () => clearTimeout(t);
-  }, [toast]);
+  const [notification, setNotification] = useState(null);
+  const [importPreviewData, setImportPreviewData] = useState(null);
   
+  const fileInputRef = useRef(null);
+
   // Form state
   const initialFormState = {
     employee_id: '',
@@ -83,6 +56,14 @@ export default function DataManagement() {
     }
   };
 
+  const showNotification = (message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => {
+      setNotification(null);
+    }, 5000);
+  };
+
+  // --- CRUD Modal ---
   const handleOpenModal = (employee = null) => {
     if (employee) {
       setEditingId(employee.employee_id);
@@ -115,105 +96,197 @@ export default function DataManagement() {
     try {
       if (editingId) {
         await updateEmployee(editingId, formData);
-        showToast('Data berhasil diperbarui!');
+        showNotification("Data berhasil diperbarui!");
       } else {
         await createEmployee(formData);
-        showToast('Data berhasil ditambahkan!');
+        showNotification("Data berhasil ditambahkan!");
       }
       handleCloseModal();
       fetchData();
     } catch (err) {
       console.error("Error submitting form:", err);
-      showToast('Gagal menyimpan data: ' + (err.message || 'Kesalahan pada server'), 'error');
+      showNotification("Gagal menyimpan data: " + (err.message || "Kesalahan pada server"), 'error');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleDelete = (id, nama) => {
-    setDeleteConfirm({ id, nama });
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!deleteConfirm) return;
-    setIsDeleting(true);
-    try {
-      await deleteEmployee(deleteConfirm.id);
-      setDeleteConfirm(null);
-      showToast(`Data ${deleteConfirm.nama} berhasil dihapus.`);
-      fetchData();
-    } catch (err) {
-      console.error("Error deleting:", err);
-      showToast('Gagal menghapus data.', 'error');
-    } finally {
-      setIsDeleting(false);
+  const handleDelete = async (id, nama) => {
+    if (window.confirm(`Apakah Anda yakin ingin menghapus data karyawan ${nama} (${id})?`)) {
+      try {
+        await deleteEmployee(id);
+        showNotification("Data berhasil dihapus!");
+        fetchData();
+      } catch (err) {
+        console.error("Error deleting:", err);
+        showNotification("Gagal menghapus data.", 'error');
+      }
     }
   };
 
-  const filteredData = data.filter(item => {
-    const searchLower = searchTerm.toLowerCase();
-    const matchesSearch = !searchTerm || 
-      String(item.nama || '').toLowerCase().includes(searchLower) || 
-      String(item.employee_id || '').toLowerCase().includes(searchLower) ||
-      String(item.jabatan || '').toLowerCase().includes(searchLower) ||
-      String(item.kebun || '').toLowerCase().includes(searchLower);
-    const matchesRegion = !regionFilter || item.region === regionFilter;
-    return matchesSearch && matchesRegion;
-  });
+  // --- Import Modal (Excel) ---
+  const handleDownloadTemplate = () => {
+    const headers = [
+      'employee_id', 'nama', 'jabatan', 'kebun', 'region', 
+      'join_date', 'resign_date', 'jenis_resign', 'cluster_resign', 
+      'alumni', 'deskripsi_resign', 'keterangan'
+    ];
+    
+    // Contoh data tunggal sesuai permintaan
+    const sampleData = [
+      '123', 'Test Staff', 'Asisten', 'MRE', 'Kubar', 
+      '2022-01-15', '2025-06-10', 'VT', 'Pindah Perusahaan', 
+      'ALUMNI', 'Penjelasan singkat', 'Catatan opsional'
+    ];
 
-  // Pagination
-  const totalPages = Math.ceil(filteredData.length / rowsPerPage);
-  const startIndex = (currentPage - 1) * rowsPerPage;
-  const endIndex = startIndex + rowsPerPage;
-  const paginatedData = filteredData.slice(startIndex, endIndex);
+    const ws = XLSX.utils.aoa_to_sheet([headers, sampleData]);
+    
+    ws['!cols'] = [
+      { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, 
+      { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, 
+      { wch: 15 }, { wch: 30 }, { wch: 20 }
+    ];
 
-  // Reset to page 1 when filter/search changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, regionFilter]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template Karyawan");
+    XLSX.writeFile(wb, "template_import_karyawan.xlsx");
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        setIsImportLoading(true);
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        
+        const parsedData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+        
+        if (parsedData.length === 0) {
+          showNotification("File kosong atau format tidak memiliki data.", 'error');
+          return;
+        }
+
+        if (!parsedData[0].hasOwnProperty('employee_id') || !parsedData[0].hasOwnProperty('nama')) {
+          showNotification("Format salah! Pastikan menggunakan template yang telah diunduh.", 'error');
+          return;
+        }
+
+        const cleanData = parsedData.map(row => {
+          const cleanedRow = { ...row };
+          Object.keys(cleanedRow).forEach(key => {
+            if (cleanedRow[key] === '') cleanedRow[key] = null;
+          });
+          return cleanedRow;
+        });
+
+        // Tampilkan preview, jangan langsung insert
+        setImportPreviewData(cleanData);
+      } catch (err) {
+        console.error("Parse error:", err);
+        showNotification("Gagal membaca file. Pastikan format tabel benar.", 'error');
+      } finally {
+        setIsImportLoading(false);
+        if (fileInputRef.current) fileInputRef.current.value = null;
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const confirmImport = async () => {
+    if (!importPreviewData) return;
+    try {
+      setIsImportLoading(true);
+      await insertEmployeesBulk(importPreviewData);
+      showNotification(`Berhasil mengimpor ${importPreviewData.length} baris data karyawan!`);
+      setIsImportModalOpen(false);
+      setImportPreviewData(null);
+      fetchData();
+    } catch (err) {
+      console.error("Import error:", err);
+      showNotification("Gagal mengimpor data. Pastikan format tabel benar dan NIK belum terdaftar.", 'error');
+    } finally {
+      setIsImportLoading(false);
+    }
+  };
+
+  const closeImportModal = () => {
+    setIsImportModalOpen(false);
+    setImportPreviewData(null);
+  };
+
+  const filteredData = data.filter(item => 
+    item.nama?.toString().toLowerCase().includes(searchTerm.toLowerCase()) || 
+    item.employee_id?.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.jabatan?.toString().toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
-    <div className="w-full space-y-4">
-      <div className="flex flex-col gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-xl font-bold text-slate-800">Manajemen Data Karyawan</h1>
-            <p className="text-sm text-slate-500">Kelola data resign karyawan (Staff_resign) — <span className="font-medium text-emerald-600">{filteredData.length}</span> data ditampilkan</p>
+    <div className="w-full space-y-4 relative">
+      {/* Toast Notification */}
+      {notification && (
+        <div className={`fixed bottom-6 right-6 p-4 rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border z-[60] flex items-center gap-3 transition-all duration-300 transform translate-y-0 opacity-100 ${
+          notification.type === 'success' 
+            ? 'bg-white border-emerald-100' 
+            : 'bg-white border-rose-100'
+        }`}>
+          {notification.type === 'success' ? (
+            <div className="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center shrink-0">
+              <Check size={20} className="text-emerald-500" />
+            </div>
+          ) : (
+            <div className="w-10 h-10 bg-rose-50 rounded-full flex items-center justify-center shrink-0">
+              <AlertCircle size={20} className="text-rose-500" />
+            </div>
+          )}
+          <div className="pr-6">
+            <h4 className={`text-sm font-bold ${notification.type === 'success' ? 'text-emerald-800' : 'text-rose-800'}`}>
+              {notification.type === 'success' ? 'Berhasil!' : 'Terjadi Kesalahan'}
+            </h4>
+            <p className="text-xs font-medium text-slate-500">{notification.message}</p>
           </div>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto sm:ml-auto mt-2 sm:mt-0">
-            <div className="relative w-full sm:w-48">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input 
-                type="text" 
-                placeholder="Cari..." 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-              />
-            </div>
-            <div className="relative w-full sm:w-40">
-              <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <select
-                value={regionFilter}
-                onChange={(e) => setRegionFilter(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white appearance-none cursor-pointer"
-              >
-                <option value="">Semua Region</option>
-                {regionOptions.map(region => (
-                  <option key={region} value={region}>{region}</option>
-                ))}
-              </select>
-            </div>
+          <button 
+            onClick={() => setNotification(null)}
+            className="absolute top-4 right-4 text-slate-300 hover:text-slate-500 transition-colors"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* Header & Actions */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">Manajemen Data Karyawan</h1>
+          <p className="text-sm text-slate-500">Kelola data resign karyawan (Staff_resign)</p>
+        </div>
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+          <div className="relative flex-1 sm:w-64 w-full">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Cari NIK, Nama, Jabatan..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+            />
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <button 
               onClick={() => setIsImportModalOpen(true)}
-              className="flex items-center justify-center gap-2 bg-white border border-emerald-600 text-emerald-700 hover:bg-emerald-50 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors shrink-0 w-full sm:w-auto"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200"
             >
               <Upload size={16} />
-              <span>Import CSV</span>
+              <span>Import Data</span>
             </button>
             <button 
               onClick={() => handleOpenModal()}
-              className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-colors shrink-0 w-full sm:w-auto"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
             >
               <Plus size={16} />
               <span>Tambah Data</span>
@@ -222,87 +295,62 @@ export default function DataManagement() {
         </div>
       </div>
 
+      {/* Table Section */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-3 py-3 font-semibold whitespace-nowrap">NIK</th>
-                <th className="px-3 py-3 font-semibold whitespace-nowrap">Nama</th>
-                <th className="px-3 py-3 font-semibold whitespace-nowrap">Jabatan</th>
-                <th className="px-3 py-3 font-semibold whitespace-nowrap">Kebun</th>
-                <th className="px-3 py-3 font-semibold whitespace-nowrap">Region</th>
-                <th className="px-3 py-3 font-semibold whitespace-nowrap">Tgl Bergabung</th>
-                <th className="px-3 py-3 font-semibold whitespace-nowrap">Tgl Resign</th>
-                <th className="px-3 py-3 font-semibold text-center whitespace-nowrap">Jenis</th>
-                <th className="px-3 py-3 font-semibold whitespace-nowrap">Cluster</th>
-                <th className="px-3 py-3 font-semibold text-center whitespace-nowrap">Alumni</th>
-                <th className="px-3 py-3 font-semibold whitespace-nowrap">Deskripsi</th>
-                <th className="px-3 py-3 font-semibold whitespace-nowrap">Keterangan</th>
-                <th className="px-3 py-3 font-semibold text-right whitespace-nowrap">Aksi</th>
+                <th className="px-4 py-3 font-semibold">NIK</th>
+                <th className="px-4 py-3 font-semibold">Nama</th>
+                <th className="px-4 py-3 font-semibold">Jabatan</th>
+                <th className="px-4 py-3 font-semibold">Kebun/Region</th>
+                <th className="px-4 py-3 font-semibold text-center">Jenis</th>
+                <th className="px-4 py-3 font-semibold">Cluster</th>
+                <th className="px-4 py-3 font-semibold text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan="13" className="px-4 py-8 text-center text-slate-500">Memuat data...</td>
+                  <td colSpan="7" className="px-4 py-8 text-center text-slate-500">Memuat data...</td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan="13" className="px-4 py-8 text-center text-rose-500">{error}</td>
+                  <td colSpan="7" className="px-4 py-8 text-center text-rose-500">{error}</td>
                 </tr>
               ) : filteredData.length > 0 ? (
-                paginatedData.map((employee, index) => (
+                filteredData.map((employee, index) => (
                   <tr key={index} className="hover:bg-slate-50">
-                    <td className="px-3 py-3 font-medium text-slate-700 whitespace-nowrap">{employee.employee_id}</td>
-                    <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{employee.nama}</td>
-                    <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{employee.jabatan || '-'}</td>
-                    <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{employee.kebun || '-'}</td>
-                    <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{employee.region || '-'}</td>
-                    <td className="px-3 py-3 text-slate-600 whitespace-nowrap text-xs">{formatDate(employee.join_date)}</td>
-                    <td className="px-3 py-3 text-slate-600 whitespace-nowrap text-xs">{formatDate(employee.resign_date)}</td>
-                    <td className="px-3 py-3 text-center">
-                      <span className={`px-2 py-1 rounded text-[10px] font-bold whitespace-nowrap ${
+                    <td className="px-4 py-3 font-medium text-slate-700">{employee.employee_id}</td>
+                    <td className="px-4 py-3 text-slate-600 font-medium">{employee.nama}</td>
+                    <td className="px-4 py-3 text-slate-600">{employee.jabatan || '-'}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      <div>{employee.kebun || '-'}</div>
+                      <div className="text-[10px] text-slate-400 font-semibold">{employee.region}</div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`px-2 py-1 rounded text-[10px] font-bold ${
                         employee.jenis_resign === 'VT' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
                       }`}>
-                        {employee.jenis_resign === 'VT' ? 'VOLUNTARY' : employee.jenis_resign === 'IT' ? 'INVOLUNTARY' : employee.jenis_resign}
+                        {employee.jenis_resign}
                       </span>
                     </td>
-                    <td className="px-3 py-3 text-slate-600 text-xs max-w-[180px] truncate" title={employee.cluster_resign}>
+                    <td className="px-4 py-3 text-slate-600 text-xs truncate max-w-[150px]" title={employee.cluster_resign}>
                       {employee.cluster_resign || '-'}
                     </td>
-                    <td className="px-3 py-3 text-center">
-                      <span className={`px-2 py-1 rounded text-[10px] font-bold whitespace-nowrap ${
-                        employee.alumni === 'ALUMNI' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
-                      }`}>
-                        {employee.alumni || '-'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 text-slate-500 text-xs max-w-[200px] truncate" title={employee.deskripsi_resign}>
-                      {employee.deskripsi_resign || '-'}
-                    </td>
-                    <td className="px-3 py-3 text-slate-500 text-xs max-w-[150px] truncate" title={employee.keterangan}>
-                      {employee.keterangan || '-'}
-                    </td>
-                    <td className="px-3 py-3 text-right">
+                    <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-1">
                         <button 
-                          onClick={() => setViewingEmployee(employee)}
-                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded"
-                          title="Lihat Detail"
-                        >
-                          <Eye size={16} />
-                        </button>
-                        <button 
                           onClick={() => handleOpenModal(employee)}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
                           title="Edit"
                         >
                           <Edit size={16} />
                         </button>
                         <button 
                           onClick={() => handleDelete(employee.employee_id, employee.nama)}
-                          className="p-1.5 text-rose-600 hover:bg-rose-50 rounded"
+                          className="p-1.5 text-rose-600 hover:bg-rose-50 rounded transition-colors"
                           title="Hapus"
                         >
                           <Trash2 size={16} />
@@ -313,55 +361,127 @@ export default function DataManagement() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="13" className="px-4 py-8 text-center text-slate-500">Tidak ada data ditemukan</td>
+                  <td colSpan="7" className="px-4 py-8 text-center text-slate-500">Tidak ada data ditemukan</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+      </div>
 
-        {/* Pagination Footer */}
-        <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-3 border-t border-slate-200 gap-3">
-          <div className="flex items-center gap-2 text-sm text-slate-600">
-            <span>Tampilkan</span>
-            <select
-              value={rowsPerPage}
-              onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-              className="border border-slate-300 rounded px-2 py-1 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-            >
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
-            <span>data per halaman</span>
-          </div>
-          <div className="flex items-center gap-3 text-sm text-slate-600">
-            <span>
-              Menampilkan {filteredData.length > 0 ? startIndex + 1 : 0} - {Math.min(endIndex, filteredData.length)} dari {filteredData.length} data
-            </span>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}
-                className="p-1 rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
-                <ChevronLeft size={18} />
+      {/* Import Modal */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100">
+              <h2 className="text-lg font-bold text-slate-800">
+                {importPreviewData ? 'Konfirmasi Data Import' : 'Import Data'}
+              </h2>
+              <button onClick={closeImportModal} className="text-slate-400 hover:text-slate-600" disabled={isImportLoading}>
+                <X size={20} />
               </button>
-              <span className="px-2 font-medium text-slate-700">{currentPage} / {totalPages || 1}</span>
-              <button
-                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                disabled={currentPage >= totalPages}
-                className="p-1 rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
-                <ChevronRight size={18} />
-              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto">
+              {!importPreviewData ? (
+                <>
+                  <p className="text-sm text-slate-600 mb-6">
+                    Anda dapat menambahkan banyak data sekaligus dengan mengunggah file. Unduh template di bawah ini untuk melihat format kolom yang dibutuhkan.
+                  </p>
+                  
+                  <div className="flex flex-col gap-4">
+                    <button 
+                      onClick={handleDownloadTemplate}
+                      className="flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-3 rounded-xl text-sm font-semibold transition-colors border border-blue-200"
+                    >
+                      <Download size={18} />
+                      Unduh Template
+                    </button>
+
+                    <div className="relative flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-xl p-8 hover:bg-slate-50 transition-colors">
+                      <Upload size={32} className="text-slate-400 mb-3" />
+                      <span className="text-sm font-medium text-slate-700 mb-1">
+                        {isImportLoading ? 'Memproses File...' : 'Klik untuk Unggah File'}
+                      </span>
+                      <span className="text-xs text-slate-500">Mendukung format .xlsx, .xls, dan .csv</span>
+                      <input 
+                        type="file" 
+                        accept=".xlsx, .xls, .csv"
+                        ref={fileInputRef}
+                        onChange={handleFileUpload}
+                        disabled={isImportLoading}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed" 
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-start gap-3">
+                    <Check size={20} className="text-blue-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-sm font-bold text-blue-800">File berhasil dibaca!</h4>
+                      <p className="text-xs text-blue-600 mt-1">Ditemukan <strong>{importPreviewData.length}</strong> baris data karyawan yang siap untuk ditambahkan ke sistem.</p>
+                    </div>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
+                      <h4 className="text-xs font-semibold text-slate-600 uppercase">Preview 3 Data Pertama</h4>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {importPreviewData.slice(0, 3).map((item, i) => (
+                        <div key={i} className="p-3 text-sm flex justify-between items-center hover:bg-slate-50">
+                          <div>
+                            <div className="font-semibold text-slate-700">{item.nama} <span className="text-slate-400 font-normal">({item.employee_id})</span></div>
+                            <div className="text-xs text-slate-500">{item.jabatan} • {item.kebun}</div>
+                          </div>
+                          <span className={`px-2 py-1 rounded text-[10px] font-bold ${
+                            item.jenis_resign === 'VT' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {item.jenis_resign}
+                          </span>
+                        </div>
+                      ))}
+                      {importPreviewData.length > 3 && (
+                        <div className="p-3 text-xs text-center text-slate-500 font-medium bg-slate-50">
+                          + {importPreviewData.length - 3} data lainnya...
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="pt-2 flex gap-3">
+                    <button 
+                      onClick={() => setImportPreviewData(null)}
+                      className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-colors"
+                      disabled={isImportLoading}
+                    >
+                      Batal
+                    </button>
+                    <button 
+                      onClick={confirmImport}
+                      className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-70 flex items-center justify-center gap-2 shadow-sm shadow-blue-200"
+                      disabled={isImportLoading}
+                    >
+                      {isImportLoading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          Menyimpan...
+                        </>
+                      ) : (
+                        `Simpan ${importPreviewData.length} Data`
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Modal Form */}
+      {/* CRUD Modal Form */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -394,12 +514,7 @@ export default function DataManagement() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Region</label>
-                  <select name="region" value={formData.region} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm">
-                    <option value="">Pilih Region...</option>
-                    {regionOptions.map(r => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}
-                  </select>
+                  <input type="text" name="region" value={formData.region} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Jenis Resign</label>
@@ -421,11 +536,11 @@ export default function DataManagement() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Tanggal Bergabung</label>
-                  <input type="date" name="join_date" value={formData.join_date} onChange={handleInputChange} onClick={(e) => e.target.showPicker && e.target.showPicker()} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm cursor-pointer" />
+                  <input type="date" name="join_date" value={formData.join_date} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Tanggal Resign</label>
-                  <input type="date" name="resign_date" value={formData.resign_date} onChange={handleInputChange} onClick={(e) => e.target.showPicker && e.target.showPicker()} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm cursor-pointer" />
+                  <input type="date" name="resign_date" value={formData.resign_date} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm" />
                 </div>
                 <div className="space-y-1 md:col-span-2">
                   <label className="text-xs font-semibold text-slate-600">Deskripsi Resign</label>
@@ -462,169 +577,6 @@ export default function DataManagement() {
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Detail View Modal */}
-      {viewingEmployee && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4" onClick={() => setViewingEmployee(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-gradient-to-r from-emerald-600 to-teal-600">
-              <div>
-                <h2 className="text-lg font-bold text-white">Detail Karyawan</h2>
-                <p className="text-emerald-100 text-sm">{viewingEmployee.employee_id}</p>
-              </div>
-              <button onClick={() => setViewingEmployee(null)} className="text-white/70 hover:text-white transition-colors">
-                <X size={20} />
-              </button>
-            </div>
-            
-            <div className="p-5 overflow-y-auto flex-1 space-y-4">
-              <div className="text-center pb-4 border-b border-slate-100">
-                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <span className="text-2xl font-bold text-emerald-700">{viewingEmployee.nama?.charAt(0)}</span>
-                </div>
-                <h3 className="text-lg font-bold text-slate-800">{viewingEmployee.nama}</h3>
-                <p className="text-sm text-slate-500">{viewingEmployee.jabatan || '-'}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: 'NIK', value: viewingEmployee.employee_id },
-                  { label: 'Nama', value: viewingEmployee.nama },
-                  { label: 'Jabatan', value: viewingEmployee.jabatan },
-                  { label: 'Kebun', value: viewingEmployee.kebun },
-                  { label: 'Region', value: viewingEmployee.region },
-                  { label: 'Tanggal Bergabung', value: formatDate(viewingEmployee.join_date) },
-                  { label: 'Tanggal Resign', value: formatDate(viewingEmployee.resign_date) },
-                  { label: 'Jenis Resign', value: viewingEmployee.jenis_resign === 'VT' ? 'Voluntary (VT)' : viewingEmployee.jenis_resign === 'IT' ? 'Involuntary (IT)' : viewingEmployee.jenis_resign },
-                  { label: 'Cluster Resign', value: viewingEmployee.cluster_resign },
-                  { label: 'Status Alumni', value: viewingEmployee.alumni },
-                ].map((item, i) => (
-                  <div key={i} className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">{item.label}</p>
-                    <p className="text-sm font-medium text-slate-700 mt-0.5">{item.value || '-'}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="bg-slate-50 rounded-lg p-3">
-                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Deskripsi Resign</p>
-                <p className="text-sm text-slate-700 mt-1 leading-relaxed">{viewingEmployee.deskripsi_resign || '-'}</p>
-              </div>
-
-              <div className="bg-slate-50 rounded-lg p-3">
-                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Keterangan Tambahan</p>
-                <p className="text-sm text-slate-700 mt-1 leading-relaxed">{viewingEmployee.keterangan || '-'}</p>
-              </div>
-            </div>
-
-            <div className="p-4 border-t border-slate-100 flex justify-end gap-2 bg-slate-50">
-              <button 
-                onClick={() => setViewingEmployee(null)}
-                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Import Modal */}
-      <ExcelImportModal 
-        isOpen={isImportModalOpen} 
-        onClose={() => setIsImportModalOpen(false)} 
-        onSuccess={(count) => {
-          showToast(`${count} data berhasil di-import!`);
-          fetchData();
-        }}
-      />
-
-      {/* Delete Confirmation Modal */}
-      {deleteConfirm && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-            {/* Top accent bar */}
-            <div className="h-1.5 bg-gradient-to-r from-rose-500 to-red-600" />
-
-            <div className="p-6">
-              {/* Icon */}
-              <div className="flex items-center justify-center w-14 h-14 bg-rose-100 rounded-2xl mx-auto mb-5">
-                <AlertTriangle className="text-rose-600" size={28} />
-              </div>
-
-              {/* Title & desc */}
-              <h2 className="text-lg font-bold text-slate-800 text-center mb-1">Hapus Data Karyawan?</h2>
-              <p className="text-sm text-slate-500 text-center mb-5">
-                Tindakan ini tidak dapat dibatalkan.
-              </p>
-
-              {/* Employee info card */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 flex items-center gap-3">
-                <div className="w-10 h-10 bg-rose-100 rounded-full flex items-center justify-center shrink-0">
-                  <span className="text-rose-700 font-bold text-base">{deleteConfirm.nama?.charAt(0)?.toUpperCase()}</span>
-                </div>
-                <div>
-                  <p className="font-semibold text-slate-800 text-sm">{deleteConfirm.nama}</p>
-                  <p className="text-xs text-slate-500">NIK: {deleteConfirm.id}</p>
-                </div>
-              </div>
-
-              {/* Buttons */}
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setDeleteConfirm(null)}
-                  disabled={isDeleting}
-                  className="flex-1 px-4 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={handleConfirmDelete}
-                  disabled={isDeleting}
-                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-rose-500 to-red-600 text-white rounded-xl text-sm font-semibold hover:from-rose-600 hover:to-red-700 transition-all shadow-sm shadow-rose-200 disabled:opacity-70 flex items-center justify-center gap-2"
-                >
-                  {isDeleting ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Menghapus...
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 size={15} />
-                      Ya, Hapus
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Toast Notification */}
-      {toast && (
-        <div
-          key={toast.id}
-          className={`fixed bottom-6 right-6 z-[100] flex items-center gap-3 px-5 py-4 rounded-2xl shadow-xl text-white text-sm font-medium min-w-[280px] max-w-sm
-            transition-all duration-300 ease-out
-            ${toast.type === 'error'
-              ? 'bg-gradient-to-r from-rose-500 to-red-600'
-              : 'bg-gradient-to-r from-emerald-500 to-teal-600'
-            }`}
-        >
-          <div className="shrink-0">
-            {toast.type === 'error'
-              ? <XCircle size={22} />
-              : <CheckCircle2 size={22} />}
-          </div>
-          <span className="flex-1 leading-snug">{toast.message}</span>
-          <button
-            onClick={() => setToast(null)}
-            className="shrink-0 opacity-70 hover:opacity-100 transition-opacity"
-          >
-            <X size={16} />
-          </button>
         </div>
       )}
     </div>
