@@ -3,6 +3,7 @@ import { Plus, Edit, Trash2, Search, X, Upload, Download, Check, AlertCircle } f
 import { getEmployeesData, createEmployee, updateEmployee, deleteEmployee, insertEmployeesBulk } from '../services/resignationService';
 
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 export default function DataManagement() {
   const [data, setData] = useState([]);
@@ -126,31 +127,70 @@ export default function DataManagement() {
   };
 
   // --- Import Modal (Excel) ---
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Template Karyawan');
+
     const headers = [
       'employee_id', 'nama', 'jabatan', 'kebun', 'region', 
       'join_date', 'resign_date', 'jenis_resign', 'cluster_resign', 
       'alumni', 'deskripsi_resign', 'keterangan'
     ];
     
+    // Add Headers
+    worksheet.addRow(headers);
+    
+    // Style Headers to look good
+    const headerRow = worksheet.getRow(1);
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF008000' } // Warna hijau seperti di referensi
+      };
+      cell.font = {
+        bold: true,
+        color: { argb: 'FFFFFFFF' } // Warna putih
+      };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = {
+        top: { style: 'thin' }, left: { style: 'thin' }, 
+        bottom: { style: 'thin' }, right: { style: 'thin' }
+      };
+    });
+
     // Contoh data tunggal sesuai permintaan
-    const sampleData = [
+    const sampleRow = worksheet.addRow([
       '123', 'Test Staff', 'Asisten', 'MRE', 'Kubar', 
       '2022-01-15', '2025-06-10', 'VT', 'Pindah Perusahaan', 
       'ALUMNI', 'Penjelasan singkat', 'Catatan opsional'
-    ];
-
-    const ws = XLSX.utils.aoa_to_sheet([headers, sampleData]);
+    ]);
     
-    ws['!cols'] = [
-      { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, 
-      { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, 
-      { wch: 15 }, { wch: 30 }, { wch: 20 }
+    sampleRow.eachCell((cell) => {
+      cell.alignment = { vertical: 'middle', horizontal: 'left' };
+      cell.border = {
+        top: { style: 'thin' }, left: { style: 'thin' }, 
+        bottom: { style: 'thin' }, right: { style: 'thin' }
+      };
+    });
+
+    // Menyesuaikan lebar kolom agar lebih rapi
+    worksheet.columns = [
+      { width: 15 }, { width: 25 }, { width: 20 }, { width: 15 }, { width: 15 }, 
+      { width: 15 }, { width: 15 }, { width: 15 }, { width: 25 }, 
+      { width: 15 }, { width: 35 }, { width: 25 }
     ];
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Template Karyawan");
-    XLSX.writeFile(wb, "template_import_karyawan.xlsx");
+    // Download the Excel file
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "template_import_karyawan.xlsx";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleFileUpload = async (e) => {
