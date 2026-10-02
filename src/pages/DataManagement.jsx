@@ -18,6 +18,7 @@ export default function DataManagement() {
   const [editingId, setEditingId] = useState(null);
   const [notification, setNotification] = useState(null);
   const [importPreviewData, setImportPreviewData] = useState(null);
+  const [importSuccessData, setImportSuccessData] = useState(null);
   
   const fileInputRef = useRef(null);
 
@@ -203,9 +204,12 @@ export default function DataManagement() {
     try {
       setIsImportLoading(true);
       await insertEmployeesBulk(importPreviewData);
-      showNotification(`Berhasil mengimpor ${importPreviewData.length} baris data karyawan!`);
+      
+      // Tampilkan popup sukses import, tutup popup import
+      setImportSuccessData({ count: importPreviewData.length });
       setIsImportModalOpen(false);
       setImportPreviewData(null);
+      
       fetchData();
     } catch (err) {
       console.error("Import error:", err);
@@ -477,6 +481,27 @@ export default function DataManagement() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Success Modal */}
+      {importSuccessData && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col p-8 items-center text-center animate-fade-in-up">
+            <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-6">
+              <Check size={40} strokeWidth={3} />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Import Berhasil!</h2>
+            <p className="text-slate-600 mb-8">
+              Sebanyak <strong className="text-slate-800">{importSuccessData.count}</strong> data berhasil di import.
+            </p>
+            <button 
+              onClick={() => setImportSuccessData(null)}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold transition-colors"
+            >
+              Oke, Selesai
+            </button>
           </div>
         </div>
       )}
